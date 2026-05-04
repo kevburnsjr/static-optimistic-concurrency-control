@@ -11,25 +11,25 @@ duration of the transaction. At commit time, the database validates whether any 
 by another process during the transaction. If the read set is clean, then the transaction commits successfully. If the
 read set is dirty, the commit fails.
 
-After a failure, the client typically sleeps for some expontial backoff interval and then retries the transaction. While
+After a failure, the client typically sleeps for some exponential backoff interval and then retries the transaction. While
 this retry strategy is the simplest and most common, it is not the only one. Other retry strategies include 
 **Hybrid Concurrency Control** [^1] where the client eschews the optimistic approach and switches to a pessimistic
 concurrency control scheme on retry (ie. interactively acquiring an exclusive lock on every record in the read set).
 
-**Guided Optimistic Concurrency Control** is a novel [^2] retry strategy where upon rejecting a propsoed commit, the
+**Guided Optimistic Concurrency Control** is a novel [^2] retry strategy where upon rejecting a proposed commit, the
 database responds with not just a rejection but also a fresh copy of all records in the read set that failed validation.
 This gives the client an opportunity to update its write-back cache and re-execute the transaction with the optimistic
 assumption that the transaction can be downgraded to a *static* data access scheme on retry.
 
-If no new keys are accessed on retry then all reads can be served from the clinet's cache meaning that the number of
+If no new keys are accessed on retry then all reads can be served from the client's cache meaning that the number of
 network round trips between the client and the database during the course of a transaction on retry is reduced from
 `O(n)` to `O(1)`. In cases where network round trip time during *dynamic* data access transactions is a primary factor
 in systemic transaction throughput, a system that successfully reduces the number of network round trips for an
 optimistic concurrency transaction to its theoretical minimum of `1` (a key property of the static data access scheme)
-should see a noticable effect on latency and throughput for high contention workloads. 
+should see a noticeable effect on latency and throughput for high contention workloads. 
 
 This strategy may reduce total system tail latencies since the retry can be executed immediately without the need for
-exponential backoff. It may also produce noticable effects on total database network traffic since the database need
+exponential backoff. It may also produce noticeable effects on total database network traffic since the database need
 only return dirty records on retry rather than re-fetching the entire read set.
 
 ## Key Concepts
