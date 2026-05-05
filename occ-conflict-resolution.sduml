@@ -34,7 +34,7 @@ end
 entryspacing 1
 group Static Retry
 entryspacing 0.5
-Client 2->DB:read(c.2)
+Client 2->DB:read(~~a~~, ~~b~~, c.2)
 activate Client 2 #lightblue
 Client 2-#green>DB:write(c.3)
 deactivate Client 2

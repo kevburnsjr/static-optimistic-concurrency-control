@@ -43,6 +43,8 @@ modified records need to be refreshed on retry rather than re-fetching the entir
 
 <img alt="OCC Conflict Resolution" src="occ-conflict-resolution.png"/>
 
+Reduced network roundtrip count minimizes opportunity for conflict.
+
 ## Example
 
 Postgres schema for basic OCC write protection
