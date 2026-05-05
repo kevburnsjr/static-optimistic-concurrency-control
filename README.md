@@ -41,7 +41,7 @@ modified records need to be refreshed on retry rather than re-fetching the entir
 
 ## Sequence Diagram
 
-<img alt="OCC Conflict Resolution" src="occ-conflict-resolution.png" width="300"/>
+<img alt="OCC Conflict Resolution" src="occ-conflict-resolution.png"/>
 
 ## Example
 
