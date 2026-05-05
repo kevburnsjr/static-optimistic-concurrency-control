@@ -39,9 +39,13 @@ modified records need to be refreshed on retry rather than re-fetching the entir
 
 * OCC **Data Access Scheme** (static / dynamic) [^2]
 
+## Sequence Diagram
+
+<img alt="OCC Conflict Resolution" src="occ-conflict-resolution.png" width="300"/>
+
 ## Example
 
-Basic Postgres schema for OCC write protection
+Postgres schema for basic OCC write protection
 
 ```sql
 CREATE TABLE kvstore (
@@ -49,8 +53,6 @@ CREATE TABLE kvstore (
     "version" INTEGER NOT NULL,
     "data" JSON NOT NULL
 );
-
--- CREATE TABLE
 
 CREATE OR REPLACE FUNCTION occ_write_check()
   RETURNS TRIGGER AS $$
@@ -64,15 +66,11 @@ CREATE OR REPLACE FUNCTION occ_write_check()
   END;
 $$ LANGUAGE plpgsql;
 
--- CREATE FUNCTION
-
 CREATE OR REPLACE TRIGGER tg_occ_write_check BEFORE UPDATE ON kvstore
   FOR EACH ROW EXECUTE PROCEDURE occ_write_check();
-
--- CREATE TRIGGER
 ```
 
-Usage
+Basic usage
 
 ```sql
 INSERT INTO kvstore ("key", "version", "data") VALUES ('foo', 1, '{"bar": 1}');
@@ -82,8 +80,8 @@ UPDATE kvstore SET "version" = 1, "data" = '{"bar": 2}' WHERE "key" = 'foo';
 -- UPDATE 1
 
 UPDATE kvstore SET "version" = 1, "data" = '{"bar": 3}' WHERE "key" = 'foo';
--- ERROR:  VERSION_CONFLICT
+-- ERROR: VERSION_CONFLICT
 ```
 
-[^1]: [Analysis of Some Optimistic Concurrency Control Schemes Based on Certification](https://dl.acm.org/doi/10.1145/317795.317824) (1985)
-[^2]: [Analysis of Hybrid Concurrency Control Schemes for a High Data Contention Environment](https://dl.acm.org/doi/abs/10.1109/32.121754) (1992)
+[^1]: [Analysis of Hybrid Concurrency Control Schemes for a High Data Contention Environment](https://dl.acm.org/doi/abs/10.1109/32.121754) (1992)
+[^2]: [Analysis of Some Optimistic Concurrency Control Schemes Based on Certification](https://dl.acm.org/doi/10.1145/317795.317824) (1985)

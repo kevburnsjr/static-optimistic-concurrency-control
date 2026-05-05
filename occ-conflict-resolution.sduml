@@ -1,0 +1,37 @@
+title OCC Conflict Resolution
+
+actor Client 1
+database DB
+actor Client 2
+
+Client 1->DB:read(a.1)
+activate Client 1 #lightblue
+
+Client 2->DB:read(a.1)
+activate Client 2 #lightblue
+Client 2->DB:read(b.1)
+Client 2->DB:read(c.1)
+Client 1->DB:read(b.1)
+Client 1->DB:read(c.1)
+Client 1-#green>DB:write(c.2)
+deactivate Client 1
+Client 2-#redxDB:write(c.2)
+deactivate Client 2
+group Traditional Retry
+Client 2->Client 2:wait
+Client 2->DB:read(a.1)
+activate Client 2 #lightblue
+Client 2->DB:read(b.1)
+Client 2->DB:read(c.2)
+Client 2-#green>DB:write(c.3)
+deactivate Client 2
+note left of Client 2:3 network roundtrips
+end
+group Static Retry
+Client 2->DB:read(c.2)
+activate Client 2 #lightblue
+Client 2-#green>DB:write(c.3)
+deactivate Client 2
+note left of Client 2:1 network roundtrip
+parallel off
+end
