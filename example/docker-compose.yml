@@ -5,6 +5,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    environment:
+      SIM_DURATION: 3s
   postgres:
     container_name: postgres
     image: postgres:latest
