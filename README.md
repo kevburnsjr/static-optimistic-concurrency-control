@@ -98,7 +98,7 @@ SELECT * FROM kvstore WHERE
 -- (1 row)
 ```
 
-## Simulation
+## Simulation Design
 
 An example implementation written in Go will exercise this OCC schema to compare the two different retry strategies
 (traditional / static).
@@ -127,6 +127,10 @@ An example implementation written in Go will exercise this OCC schema to compare
 * Retry Count Burndown
 * Latency Quantiles
 * Active Transaction Count
+
+## Results
+
+TBD
 
 ## Prospective Evaluation
 
