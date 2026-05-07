@@ -22,7 +22,7 @@ read set).
 first execution, updates only the stale values upon failure and then immediately retries the transaction with the
 optimistic assumption that the read set will not change across executions. This allows all stale keys in the write-back
 cache to be updated to their latest version simultaneously, optimistically assuming that the transaction will adhere to
-a *static* data access scheme.
+a *static* data access scheme [^3].
 
 If no new keys are accessed on retry then all reads can be served from the client's cache meaning that the number of
 network round trips between the client and the database during the course of a transaction on retry is reduced from
@@ -35,10 +35,6 @@ workloads.
 This strategy may reduce total system tail latencies since retries can be executed immediately without the need for
 exponential backoff on conflict. It may even produce noticeable effects on total database network traffic since only
 modified records need to be refreshed on each retry rather than re-fetching the entire read set.
-
-## Key Concepts
-
-* OCC **Data Access Scheme** (static / dynamic) [^3]
 
 ## Sequence Diagram
 
