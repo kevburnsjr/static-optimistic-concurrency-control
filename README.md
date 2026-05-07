@@ -1,6 +1,6 @@
-# Static Optimistic Concurrency Control
+# Static Optimistic Concurrency Control for Distributed Transaction Processing Systems
 
-This repository contains a description, proof of concept and simulation test suite for a novel refinement of
+This repository contains a description, proof of concept and simulation test suite for a modern refinement of
 **Optimistic Concurrency Control** (OCC) [^1] designed to optimize throughput in high contention OCC workloads.
 
 ## Overview
@@ -76,14 +76,30 @@ CREATE OR REPLACE TRIGGER tg_occ_write_check BEFORE UPDATE ON kvstore
 Usage
 
 ```sql
-INSERT INTO kvstore ("key", "version", "data") VALUES ('foo', 1, '{"bar": 1}');
+INSERT INTO kvstore ("key", "version", "data") VALUES ('a', 1, '{"bar": 1}');
+INSERT INTO kvstore ("key", "version", "data") VALUES ('b', 1, '{"baz": 1}');
+INSERT INTO kvstore ("key", "version", "data") VALUES ('c', 1, '{"bon": 1}');
 -- INSERT 0 1
 
-UPDATE kvstore SET "version" = 1, "data" = '{"bar": 2}' WHERE "key" = 'foo';
+UPDATE kvstore SET "version" = 1, "data" = '{"bon": 2}' WHERE "key" = 'c';
 -- UPDATE 1
 
-UPDATE kvstore SET "version" = 1, "data" = '{"bar": 3}' WHERE "key" = 'foo';
+UPDATE kvstore SET "version" = 1, "data" = '{"bon": 3}' WHERE "key" = 'c';
 -- ERROR: VERSION_CONFLICT
+```
+
+Read set refresh example from the sequence diagram
+
+```sql
+SELECT * FROM kvstore WHERE "key" = 'a' AND "version" > 1
+UNION ALL
+SELECT * FROM kvstore WHERE "key" = 'b' AND "version" > 1
+UNION ALL
+SELECT * FROM kvstore WHERE "key" = 'c' AND "version" > 1;
+--  key | version |    data
+-- -----+---------+------------
+--  c   |       2 | {"bon": 2}
+-- (1 row)
 ```
 
 ## Simulation
@@ -98,6 +114,7 @@ An example implementation written in Go will exercise this OCC schema to compare
 * Read Set Size Min (default 1)
 * Read Set Size Max (default 10)
 * Read Set Size Distribution (default zipfian) (options: linear, static)
+* Write Percent (default 10)
 * Data Size Min (default 100b)
 * Data Size Max (default 100kb)
 * Data Size Distribution (default zipfian) (options: linear, static)
