@@ -18,7 +18,7 @@ include **Hybrid Concurrency Control** [^2] where the client eschews the optimis
 pessimistic concurrency control strategy on retry (ie. interactively acquiring an exclusive lock on every record in the
 read set).
 
-**Static Optimistic Concurrency Control** is a novel OCC retry strategy where the client caches the read set during the
+**Static Optimistic Concurrency Control** is an OCC retry strategy where the client caches the read set during the
 first execution, updates only the stale values upon failure and then immediately retries the transaction with the
 optimistic assumption that the read set will not change across executions. This allows all stale keys in the write-back
 cache to be updated to their latest version simultaneously, optimistically assuming that the transaction will adhere to
@@ -76,29 +76,29 @@ CREATE OR REPLACE TRIGGER tg_occ_write_check BEFORE UPDATE ON kvstore
 Usage
 
 ```sql
-INSERT INTO kvstore ("key", "version", "data") VALUES ('a', 1, '{"bar": 1}');
-INSERT INTO kvstore ("key", "version", "data") VALUES ('b', 1, '{"baz": 1}');
-INSERT INTO kvstore ("key", "version", "data") VALUES ('c', 1, '{"bon": 1}');
+INSERT INTO kvstore ("key", "version", "data") VALUES 
+  ('a', 1, '{"foo": 1}'),
+  ('b', 1, '{"bar": 1}'),
+  ('c', 1, '{"baz": 1}');
 -- INSERT 0 1
 
-UPDATE kvstore SET "version" = 1, "data" = '{"bon": 2}' WHERE "key" = 'c';
+UPDATE kvstore SET "version" = 1, "data" = '{"baz": 2}' WHERE "key" = 'c';
 -- UPDATE 1
 
-UPDATE kvstore SET "version" = 1, "data" = '{"bon": 3}' WHERE "key" = 'c';
+UPDATE kvstore SET "version" = 1, "data" = '{"baz": 3}' WHERE "key" = 'c';
 -- ERROR: VERSION_CONFLICT
 ```
 
 Read set refresh example from the sequence diagram
 
 ```sql
-SELECT * FROM kvstore WHERE "key" = 'a' AND "version" > 1
-UNION ALL
-SELECT * FROM kvstore WHERE "key" = 'b' AND "version" > 1
-UNION ALL
-SELECT * FROM kvstore WHERE "key" = 'c' AND "version" > 1;
+SELECT * FROM kvstore WHERE
+  ("key" = 'a' AND "version" > 1) OR
+  ("key" = 'b' AND "version" > 1) OR
+  ("key" = 'c' AND "version" > 1);
 --  key | version |    data
 -- -----+---------+------------
---  c   |       2 | {"bon": 2}
+--  c   |       2 | {"baz": 2}
 -- (1 row)
 ```
 
