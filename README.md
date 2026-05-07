@@ -114,7 +114,7 @@ An example implementation written in Go will exercise this OCC schema to compare
 * Data Size Min (default 100b)
 * Data Size Max (default 100kb)
 * Data Size Distribution (default zipfian) (options: linear, static)
-* Isolation Level (default ReadCommitted) (options: Serializable)
+* Isolation Level (default ReadCommitted) (options: Snapshot)
 * Transaction Rate (default 1000/s)
 * Transaction Batch Interval (default 0 (batching disabled)) (in ms to simulate hammering for worst case scenario)
 * Inner Retries (default 2)
