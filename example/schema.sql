@@ -1,7 +1,7 @@
-CREATE TABLE kvstore (
-  "key" VARCHAR(255) PRIMARY KEY,
+CREATE TABLE accounts (
+  "id" INTEGER PRIMARY KEY,
   "version" INTEGER NOT NULL,
-  "data" JSON NOT NULL
+  "balance" INTEGER NOT NULL
 );
 
 CREATE OR REPLACE FUNCTION occ_write_check()
@@ -16,5 +16,5 @@ CREATE OR REPLACE FUNCTION occ_write_check()
   END;
 $$ LANGUAGE plpgsql;
 
-CREATE OR REPLACE TRIGGER tg_occ_write_check BEFORE UPDATE ON kvstore
+CREATE OR REPLACE TRIGGER tg_occ_write_check BEFORE UPDATE ON accounts
   FOR EACH ROW EXECUTE PROCEDURE occ_write_check();

@@ -116,9 +116,9 @@ An example implementation written in Go will exercise this OCC schema to compare
 * Data Size Distribution (default zipfian) (options: linear, static)
 * Isolation Level (default ReadCommitted) (options: Snapshot)
 * Transaction Rate (default 1000/s)
-* Transaction Batch Interval (default 0 (batching disabled)) (in ms to simulate hammering for worst case scenario)
-* Inner Retries (default 2)
-* Outer Retries (default 2)
+* Transaction Batch Interval (default 0 (batching disabled)) (in ms to simulate hammering)
+* Inner Retries (default 2) (static)
+* Outer Retries (default 2) (traditional)
 
 ### Metrics
 
@@ -137,7 +137,7 @@ TBD
 Measuring the potential impact of Static Optimistic Concurrency Control prior to implementation and deployment for a
 given set of workloads should be possible through additional instrumentation.
 
-* What percentage of retries in your system have read sets identical to that of the first attempt? (high?)
+* What percentage of retries in your system have read sets identical to that of the first attempt? (>99%?)
 * What is the median number of values in the read set that actually differs from one attempt to the next? (1?)
 * Is there a positive correlation between read set size and retry count? (yes?)
 

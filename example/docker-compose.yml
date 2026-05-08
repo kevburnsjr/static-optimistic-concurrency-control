@@ -7,6 +7,8 @@ services:
         condition: service_healthy
     environment:
       SIM_DURATION: 3s
+    ports:
+      - 8000:8000
   postgres:
     container_name: postgres
     image: postgres:latest
