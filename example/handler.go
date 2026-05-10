@@ -123,7 +123,6 @@ func (h *handler) clear(w http.ResponseWriter, r *http.Request) {
 func (h *handler) seed(w http.ResponseWriter, r *http.Request, req args) {
 	log.Printf("Seeding accounts %d-%d with initial balance %d\n", req.Start, req.Start+req.Count, req.Initial)
 	for i := req.Start; i < req.Start+req.Count; i++ {
-		// time.Sleep(h.cfg.RTT / 2)
 		if _, err := h.dbpool.Exec(r.Context(),
 			`INSERT INTO ACCOUNTS (id, version, balance) VALUES ($1, 1, $2);`, i, req.Initial,
 		); err != nil {
@@ -131,7 +130,6 @@ func (h *handler) seed(w http.ResponseWriter, r *http.Request, req args) {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		// time.Sleep(h.cfg.RTT / 2)
 	}
 	log.Printf("Done seeding accounts %d-%d\n", req.Start, req.Start+req.Count)
 	time.Sleep(h.cfg.Latency / 2)
@@ -145,12 +143,18 @@ type account struct {
 	Version int
 }
 
+func (h *handler) roundtrip(fn func()) {
+	time.Sleep(h.cfg.RTT / 2)
+	fn()
+	time.Sleep(h.cfg.RTT / 2)
+}
+
 func (h *handler) transfer(w http.ResponseWriter, r *http.Request, req args) {
 	ctx := r.Context()
 	var err error
 	var from, to account
 	// 3 outer attempts
-	for i := range 3 {
+	for i := range 2 {
 		time.Sleep(time.Duration(i) * 10 * time.Millisecond)
 		if from, err = h.findAccount(ctx, req.From); err != nil {
 			log.Printf("Error finding from account: %v\n", err)
@@ -163,18 +167,17 @@ func (h *handler) transfer(w http.ResponseWriter, r *http.Request, req args) {
 			return
 		}
 		if from.Balance < req.Amount {
+			log.Printf("Not enough balance in from account: %d < %d\n", from.Balance, req.Amount)
 			time.Sleep(h.cfg.Latency / 2)
 			w.Write(fmt.Appendf(nil, `{"status": "success"}`))
 			return
 		}
-		time.Sleep(h.cfg.RTT / 2)
-		batch := &pgx.Batch{}
-		// batch.Queue(`UPDATE accounts SET balance = balance - $1, version = $2 WHERE id = $3`, req.Amount, from.Version, from.ID)
-		// batch.Queue(`UPDATE accounts SET balance = balance + $1, version = $2 WHERE id = $3`, req.Amount, to.Version, to.ID)
-		batch.Queue(fmt.Sprintf(`UPDATE accounts SET balance = balance - %d, version = %d WHERE id = %d`, req.Amount, from.Version, from.ID))
-		batch.Queue(fmt.Sprintf(`UPDATE accounts SET balance = balance + %d, version = %d WHERE id = %d`, req.Amount, to.Version, to.ID))
-		err = h.dbpool.SendBatch(ctx, batch).Close()
-		time.Sleep(h.cfg.RTT / 2)
+		h.roundtrip(func() {
+			batch := &pgx.Batch{}
+			batch.Queue(`UPDATE accounts SET balance = balance - $1, version = $2 WHERE id = $3`, req.Amount, from.Version, from.ID)
+			batch.Queue(`UPDATE accounts SET balance = balance + $1, version = $2 WHERE id = $3`, req.Amount, to.Version, to.ID)
+			err = h.dbpool.SendBatch(ctx, batch).Close()
+		})
 		if err == nil {
 			time.Sleep(h.cfg.Latency / 2)
 			w.Write(fmt.Appendf(nil, `{"status": "success"}`))
@@ -185,24 +188,47 @@ func (h *handler) transfer(w http.ResponseWriter, r *http.Request, req args) {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		// 2 inner attempts
+		// inner retry
 		if static {
 			for range 2 {
 				if !pessimistic {
-					h.refreshAccountsStatic(ctx, &from, &to)
+					var rows pgx.Rows
+					h.roundtrip(func() {
+						rows, err = h.dbpool.Query(ctx, `SELECT * FROM accounts WHERE (id = $1 AND version > $2) OR (id = $3 AND version > $4)`, from.ID, from.Version, to.ID, to.Version)
+					})
+					if err != nil {
+						log.Printf("Error refreshing accounts optimistically: %v\n", err)
+						time.Sleep(h.cfg.Latency / 2)
+						http.Error(w, err.Error(), http.StatusInternalServerError)
+						return
+					}
+					accounts, err := pgx.CollectRows(rows, pgx.RowToStructByName[account])
+					if err != nil {
+						log.Printf("Error collecting accounts: %v\n", err)
+						time.Sleep(h.cfg.Latency / 2)
+						http.Error(w, err.Error(), http.StatusInternalServerError)
+						return
+					}
+					for _, acct := range accounts {
+						switch acct.ID {
+						case from.ID:
+							from = acct
+						case to.ID:
+							to = acct
+						}
+					}
 					if from.Balance < req.Amount {
+						log.Printf("Not enough balance in from account: %d < %d\n", from.Balance, req.Amount)
 						time.Sleep(h.cfg.Latency / 2)
 						w.Write(fmt.Appendf(nil, `{"status": "success"}`))
 						return
 					}
-					time.Sleep(h.cfg.RTT / 2)
-					batch := &pgx.Batch{}
-					// batch.Queue(`UPDATE accounts SET balance = balance - $1, version = $2 WHERE id = $3`, req.Amount, from.Version, from.ID)
-					// batch.Queue(`UPDATE accounts SET balance = balance + $1, version = $2 WHERE id = $3`, req.Amount, to.Version, to.ID)
-					batch.Queue(fmt.Sprintf(`UPDATE accounts SET balance = balance - %d, version = %d WHERE id = %d`, req.Amount, from.Version, from.ID))
-					batch.Queue(fmt.Sprintf(`UPDATE accounts SET balance = balance + %d, version = %d WHERE id = %d`, req.Amount, to.Version, to.ID))
-					err = h.dbpool.SendBatch(ctx, batch).Close()
-					time.Sleep(h.cfg.RTT / 2)
+					h.roundtrip(func() {
+						batch := &pgx.Batch{}
+						batch.Queue(`UPDATE accounts SET balance = balance - $1, version = $2 WHERE id = $3`, req.Amount, from.Version, from.ID)
+						batch.Queue(`UPDATE accounts SET balance = balance + $1, version = $2 WHERE id = $3`, req.Amount, to.Version, to.ID)
+						err = h.dbpool.SendBatch(ctx, batch).Close()
+					})
 					if err == nil {
 						time.Sleep(h.cfg.Latency / 2)
 						w.Write(fmt.Appendf(nil, `{"status": "success"}`))
@@ -210,58 +236,81 @@ func (h *handler) transfer(w http.ResponseWriter, r *http.Request, req args) {
 					}
 					if !strings.Contains(err.Error(), "VERSION_CONFLICT") && !strings.Contains(err.Error(), "deadlock detected") {
 						log.Printf("Error closing batch: %v\n", err)
+						time.Sleep(h.cfg.Latency / 2)
 						http.Error(w, err.Error(), http.StatusInternalServerError)
 						return
 					}
 				} else {
-					txn, err := h.dbpool.Begin(ctx)
+					var txn pgx.Tx
+					h.roundtrip(func() {
+						txn, err = h.dbpool.Begin(ctx)
+					})
 					if err != nil {
 						txn.Rollback(ctx)
 						log.Printf("Error beginning transaction: %v\n", err)
+						time.Sleep(h.cfg.Latency / 2)
 						http.Error(w, err.Error(), http.StatusInternalServerError)
 						return
 					}
-					err = h.refreshAccountsPessimistic(ctx, txn, &from, &to)
+					var rows pgx.Rows
+					h.roundtrip(func() {
+						rows, err = txn.Query(ctx, fmt.Sprintf(`SELECT * FROM accounts WHERE id IN (%d, %d) FOR UPDATE`, from.ID, to.ID))
+					})
 					if err != nil {
 						txn.Rollback(ctx)
 						log.Printf("Error refreshing accounts pessimistically: %v\n", err)
+						time.Sleep(h.cfg.Latency / 2)
 						http.Error(w, err.Error(), http.StatusInternalServerError)
 						return
+					}
+					accounts, err := pgx.CollectRows(rows, pgx.RowToStructByName[account])
+					if err != nil {
+						txn.Rollback(ctx)
+						log.Printf("Error collecting accounts: %v\n", err)
+						time.Sleep(h.cfg.Latency / 2)
+						http.Error(w, err.Error(), http.StatusInternalServerError)
+						return
+					}
+					for _, acct := range accounts {
+						switch acct.ID {
+						case from.ID:
+							from = acct
+						case to.ID:
+							to = acct
+						}
 					}
 					if from.Balance < req.Amount {
 						txn.Rollback(ctx)
 						time.Sleep(h.cfg.Latency / 2)
+						log.Printf("Not enough balance in from account: %d < %d\n", from.Balance, req.Amount)
 						w.Write(fmt.Appendf(nil, `{"status": "success"}`))
 						return
 					}
-					time.Sleep(h.cfg.RTT / 2)
-					_, err = txn.Exec(ctx, fmt.Sprintf(`UPDATE accounts SET balance = balance - %d, version = %d WHERE id = %d`, req.Amount, from.Version, from.ID))
+					h.roundtrip(func() {
+						_, err = txn.Exec(ctx, fmt.Sprintf(`UPDATE accounts SET balance = balance - %d, version = %d WHERE id = %d`, req.Amount, from.Version, from.ID))
+					})
 					if err != nil {
 						txn.Rollback(ctx)
+						log.Printf("Error executing transaction: %v\n", err)
 						continue
 					}
-					_, err = txn.Exec(ctx, fmt.Sprintf(`UPDATE accounts SET balance = balance + %d, version = %d WHERE id = %d`, req.Amount, to.Version, to.ID))
+					h.roundtrip(func() {
+						_, err = txn.Exec(ctx, fmt.Sprintf(`UPDATE accounts SET balance = balance + %d, version = %d WHERE id = %d`, req.Amount, to.Version, to.ID))
+					})
 					if err != nil {
 						txn.Rollback(ctx)
+						log.Printf("Error executing transaction: %v\n", err)
 						continue
 					}
-					// batch := &pgx.Batch{}
-					// batch.Queue(`UPDATE accounts SET balance = balance - $1, version = $2 WHERE id = $3`, req.Amount, from.Version, from.ID)
-					// batch.Queue(`UPDATE accounts SET balance = balance + $1, version = $2 WHERE id = $3`, req.Amount, to.Version, to.ID)
-					// batch.Queue(fmt.Sprintf(`UPDATE accounts SET balance = balance - %d, version = %d WHERE id = %d`, req.Amount, from.Version, from.ID))
-					// batch.Queue(fmt.Sprintf(`UPDATE accounts SET balance = balance + %d, version = %d WHERE id = %d`, req.Amount, to.Version, to.ID))
-					// batch.Queue(`COMMIT`)
-					// err = txn.SendBatch(ctx, batch).Close()
-					err = txn.Commit(ctx)
-					time.Sleep(h.cfg.RTT / 2)
+					h.roundtrip(func() {
+						err = txn.Commit(ctx)
+					})
 					if err == nil {
-						txn.Rollback(ctx)
 						time.Sleep(h.cfg.Latency / 2)
 						w.Write(fmt.Appendf(nil, `{"status": "success"}`))
 						return
 					}
 					if !strings.Contains(err.Error(), "VERSION_CONFLICT") && !strings.Contains(err.Error(), "deadlock detected") {
-						txn.Rollback(ctx)
 						log.Printf("Error closing batch: %v\n", err)
 						http.Error(w, err.Error(), http.StatusInternalServerError)
 						return
@@ -281,57 +330,11 @@ const conflictErrMsg = `Documents read from or written to the "accounts" table c
 
 func (h *handler) findAccount(ctx context.Context, id int) (acct account, err error) {
 	time.Sleep(h.cfg.RTT / 2)
+	defer time.Sleep(h.cfg.RTT / 2)
 	rows, err := h.dbpool.Query(ctx, "select * from accounts where id=$1", id)
 	if err != nil {
 		return
 	}
 	acct, err = pgx.CollectOneRow(rows, pgx.RowToStructByName[account])
-	time.Sleep(h.cfg.RTT / 2)
-	return
-}
-
-func (h *handler) refreshAccountsStatic(ctx context.Context, from, to *account) (err error) {
-	time.Sleep(h.cfg.RTT / 2)
-	defer time.Sleep(h.cfg.RTT / 2)
-	// rows, err := h.dbpool.Query(ctx, `SELECT * FROM accounts WHERE (id = $1 AND version > $2)  OR (id = $3 AND version > $4)`, from.ID, from.Version, to.ID, to.Version)
-	rows, err := h.dbpool.Query(ctx, fmt.Sprintf(`SELECT * FROM accounts WHERE (id = %d AND version > %d)  OR (id = %d AND version > %d)`, from.ID, from.Version, to.ID, to.Version))
-	if err != nil {
-		return
-	}
-	accounts, err := pgx.CollectRows(rows, pgx.RowToStructByName[account])
-	if err != nil {
-		return
-	}
-	for _, acct := range accounts {
-		switch acct.ID {
-		case from.ID:
-			*from = acct
-		case to.ID:
-			*to = acct
-		}
-	}
-	return
-}
-
-func (h *handler) refreshAccountsPessimistic(ctx context.Context, txn pgx.Tx, from, to *account) (err error) {
-	time.Sleep(h.cfg.RTT / 2)
-	defer time.Sleep(h.cfg.RTT / 2)
-	// rows, err := txn.Query(ctx, `SELECT * FROM accounts WHERE (id = $1 AND version > $2) OR (id = $3 AND version > $4) FOR UPDATE`, from.ID, from.Version, to.ID, to.Version)
-	rows, err := txn.Query(ctx, fmt.Sprintf(`SELECT * FROM accounts WHERE (id = %d AND version > %d)  OR (id = %d AND version > %d) FOR UPDATE`, from.ID, from.Version, to.ID, to.Version))
-	if err != nil {
-		return
-	}
-	accounts, err := pgx.CollectRows(rows, pgx.RowToStructByName[account])
-	if err != nil {
-		return
-	}
-	for _, acct := range accounts {
-		switch acct.ID {
-		case from.ID:
-			*from = acct
-		case to.ID:
-			*to = acct
-		}
-	}
 	return
 }

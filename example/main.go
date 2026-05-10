@@ -5,6 +5,7 @@ import (
 	_ "embed"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/caarlos0/env/v11"
@@ -24,8 +25,8 @@ func main() {
 	ctx := context.Background()
 	cfg := config{
 		PostgresDSN: "postgresql://postgres:postgres@postgres:5432/postgres?sslmode=disable",
-		RTT:         1 * time.Millisecond,
-		Latency:     250 * time.Millisecond,
+		RTT:         10 * time.Millisecond,
+		Latency:     100 * time.Millisecond,
 	}
 	if err := env.Parse(&cfg); err != nil {
 		panic(err)
@@ -59,11 +60,13 @@ func mustConnect(ctx context.Context, dsn string) (dbpool *pgxpool.Pool) {
 	if err != nil {
 		log.Fatalf("Unable to connect to database: %v\n", err)
 	}
-	log.Println(`Datbase connection established.`)
+	log.Println(`Database connection established.`)
 	_, err = dbpool.Exec(ctx, string(schema))
-	if err != nil {
+	if err == nil {
+		log.Println(`Schema created.`)
+	} else if !strings.Contains(err.Error(), `already exists`) {
 		log.Fatalf("Unable to create schema: %v\n", err)
 	}
-	log.Println(`Schema created.`)
+
 	return
 }

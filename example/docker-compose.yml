@@ -19,11 +19,11 @@ services:
     expose:
       - 5432
     restart: always
-    volumes:
-      - type: tmpfs
-        target: /var/lib/postgresql
-        tmpfs:
-          mode: 01777
+    # volumes:
+    #   - type: tmpfs
+    #     target: /var/lib/postgresql
+    #     tmpfs:
+    #       mode: 01777
     healthcheck:
       test: [ "CMD", "pg_isready", "-U", "postgres" ]
       interval: 1s
